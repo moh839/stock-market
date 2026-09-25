@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ledger — Market Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#10151d; --panel-2:#141b25; --line:#1e2733;
+    --text:#e7ecf3; --muted:#7c8899; --dim:#4a5568;
+    --up:#2fd480; --down:#f2495c; --accent:#5b8def;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f5f7fa; --panel:#ffffff; --panel-2:#f0f2f6; --line:#e2e6ec;
+      --text:#141a22; --muted:#5c6673; --dim:#9aa4b2;
+      --up:#1a9c5a; --down:#d6304a; --accent:#3467d6;
+    }
+  }
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  header{
+    display:flex; align-items:center; gap:24px; padding:14px 20px;
+    border-bottom:1px solid var(--line); background:var(--panel);
+    position:sticky; top:0; z-index:10;
+    padding-top:calc(14px + env(safe-area-inset-top,0px));
+  }
+  .brand{font-weight:700; font-size:17px; letter-spacing:-0.02em; white-space:nowrap;}
+  .brand span{color:var(--accent);}
+  .idx-strip{display:flex; gap:22px; overflow-x:auto; flex:1; scrollbar-width:none;}
+  .idx-strip::-webkit-scrollbar{display:none;}
+  .idx{display:flex; flex-direction:column; white-space:nowrap; font-size:12.5px;}
+  .idx b{font-size:13px; color:var(--text);}
+  .idx .chg{font-size:11.5px;}
+  .up{color:var(--up);} .down{color:var(--down);}
+  .clock{font-size:12px; color:var(--muted); white-space:nowrap;}
+
+  main{
+    display:grid; grid-template-columns: 250px 1fr 260px;
+    gap:1px; background:var(--line);
+    max-width:1280px; margin:0 auto;
+  }
+  @media (max-width:900px){ main{grid-template-columns:1fr;} }
+
+  section{background:var(--bg);}
+  .panel-title{
+    font-size:12px; color:var(--muted); font-weight:600; padding:14px 16px 8px;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+
+  /* Watchlist */
+  .watchlist{display:flex; flex-direction:column;}
+  .stock-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 16px; cursor:pointer; border-left:2px solid transparent;
+    transition:background .12s ease;
+  }
+  .stock-row:hover{background:var(--panel-2);}
+  .stock-row.active{background:var(--panel-2); border-left-color:var(--accent);}
+  .stock-row .sym{font-weight:600; font-size:13.5px;}
+  .stock-row .name{font-size:11px; color:var(--dim); margin-top:1px;}
+  .stock-row .right{text-align:right;}
+  .stock-row .price{font-size:13px; font-weight:600;}
+  .stock-row .delta{font-size:11px;}
+  .spark{width:52px; height:22px; margin:0 8px;}
+
+  /* Center */
+  .center-top{padding:18px 20px 6px;}
+  .sym-title{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;}
+  .sym-title h1{font-size:22px; margin:0; letter-spacing:-0.01em;}
+  .sym-title .name{color:var(--muted); font-size:13px;}
+  .price-line{display:flex; align-items:baseline; gap:12px; margin-top:6px;}
+  .big-price{font-size:34px; font-weight:700;}
+  .big-delta{font-size:15px; font-weight:600;}
+  .range-tabs{display:flex; gap:4px; margin:14px 20px 4px;}
+  .range-tabs button{
+    background:none; border:1px solid var(--line); color:var(--muted);
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:5px 11px;
+    border-radius:5px; cursor:pointer;
+  }
+  .range-tabs button.on{background:var(--accent); color:#fff; border-color:var(--accent);}
+  .chart-wrap{padding:6px 12px 4px; position:relative;}
+  svg#chart{width:100%; height:260px; display:block;}
+  .crosshair-info{
+    position:absolute; top:6px; left:24px; font-size:12px; color:var(--muted);
+    pointer-events:none; background:var(--panel); padding:3px 8px; border-radius:5px;
+    border:1px solid var(--line); opacity:0; transition:opacity .1s;
+  }
+  .stat-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+    background:var(--line); margin:16px 0 0; border-top:1px solid var(--line);
+  }
+  .stat{background:var(--bg); padding:12px 16px;}
+  .stat .label{font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em;}
+  .stat .val{font-size:14px; font-weight:600; margin-top:3px;}
+  @media (max-width:560px){ .stat-grid{grid-template-columns:repeat(2,1fr);} }
+
+  /* Right panel */
+  .order-book{padding:0 16px 12px;}
+  .ob-row{display:grid; grid-template-columns:1fr 1fr 1fr; font-size:11.5px; padding:3px 0; position:relative;}
+  .ob-row .bid{color:var(--up);} .ob-row .ask{color:var(--down); text-align:right;}
+  .ob-row .qty{color:var(--muted); text-align:center;}
+  .ob-head{color:var(--dim); font-size:10px; text-transform:uppercase;}
+  .news{padding:0 16px 18px;}
+  .news-item{padding:9px 0; border-top:1px solid var(--line); font-size:12px;}
+  .news-item .src{color:var(--dim); font-size:10.5px; margin-top:3px;}
+
+  footer{
+    text-align:center; padding:16px; color:var(--dim); font-size:11px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">ledger<span>.</span></div>
+  <div class="idx-strip mono" id="idxStrip"></div>
+  <div class="clock mono" id="clock"></div>
+</header>
+
+<main>
+  <section class="watchlist">
+    <div class="panel-title">Watchlist</div>
+    <div id="watchlist"></div>
+  </section>
+
+  <section>
+    <div class="center-top">
+      <div class="sym-title">
+        <h1 id="cSym">—</h1>
+        <span class="name" id="cName"></span>
+      </div>
+      <div class="price-line">
+        <span class="big-price mono" id="cPrice"></span>
+        <span class="big-delta mono" id="cDelta"></span>
+      </div>
+    </div>
+    <div class="range-tabs mono" id="rangeTabs">
+      <button data-r="1D" class="on">1D</button>
+      <button data-r="1W">1W</button>
+      <button data-r="1M">1M</button>
+      <button data-r="1Y">1Y</button>
+    </div>
+    <div class="chart-wrap">
+      <div class="crosshair-info mono" id="crossInfo"></div>
+      <svg id="chart" viewBox="0 0 700 260" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="stat-grid mono" id="statGrid"></div>
+  </section>
+
+  <section>
+    <div class="panel-title">Order Book</div>
+    <div class="order-book mono">
+      <div class="ob-row ob-head"><span>Bid</span><span>Qty</span><span>Ask</span></div>
+      <div id="orderBook"></div>
+    </div>
+    <div class="panel-title">Market News</div>
+    <div class="news" id="news"></div>
+  </section>
+</main>
+
+<footer>Simulated data for demonstration — not live market feeds.</footer>
+
+<script>
+(function(){
+  // ---------- Data setup ----------
+  const stocks = [
+    {sym:"AAPL", name:"Apple Inc.", price:214.32, vol:1.2},
+    {sym:"MSFT", name:"Microsoft Corp.", price:428.11, vol:1.1},
+    {sym:"GOOGL", name:"Alphabet Inc.", price:171.84, vol:1.4},
+    {sym:"AMZN", name:"Amazon.com", price:198.55, vol:1.5},
+    {sym:"NVDA", name:"NVIDIA Corp.", price:132.67, vol:2.3},
+    {sym:"TSLA", name:"Tesla Inc.", price:256.90, vol:2.8},
+    {sym:"META", name:"Meta Platforms", price:562.40, vol:1.7},
+    {sym:"NFLX", name:"Netflix Inc.", price:712.15, vol:1.6}
+  ];
+  const indices = [
+    {sym:"S&P 500", price:5872.16, vol:0.4},
+    {sym:"NASDAQ", price:18541.30, vol:0.6},
+    {sym:"DOW", price:42815.90, vol:0.3},
+    {sym:"VIX", price:14.62, vol:1.9}
+  ];
+  const newsItems = [
+    {h:"Chipmakers rally as demand outlook improves", s:"MarketWire"},
+    {h:"Fed signals steady rates through year-end", s:"Reuters"},
+    {h:"Retail sales beat expectations in latest report", s:"Bloomberg"},
+    {h:"Tech sector leads broad market gains", s:"CNBC"},
+    {h:"Energy stocks slip on falling crude prices", s:"AP"}
+  ];
+
+  function seedHistory(base, n, vol){
+    let h = []; let p = base * (0.94 + Math.random()*0.05);
+    for(let i=0;i<n;i++){
+      p += (Math.random()-0.5) * (base*0.006*vol);
+      h.push(p);
+    }
+    h[h.length-1] = base;
+    return h;
+  }
+  stocks.forEach(s => { s.hist = seedHistory(s.price, 60, s.vol); s.open = s.hist[0]; });
+  indices.forEach(s => { s.hist = seedHistory(s.price, 60, s.vol); s.open = s.hist[0]; });
+
+  let active = stocks[0].sym;
+  let range = "1D";
+
+  function delta(s){ return s.price - s.open; }
+  function pct(s){ return (delta(s)/s.open)*100; }
+  function fmt(n, d=2){ return n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); }
+  function sign(n){ return n>=0 ? "+"+fmt(n) : fmt(n); }
+
+  // ---------- Render: index strip ----------
+  function renderIndices(){
+    document.getElementById("idxStrip").innerHTML = indices.map(s=>{
+      const cls = delta(s)>=0 ? "up":"down";
+      return `<div class="idx"><b>${s.sym}</b><span class="chg ${cls}">${fmt(s.price)} ${sign(pct(s))}%</span></div>`;
+    }).join("");
+  }
+
+  // ---------- Render: watchlist ----------
+  function sparkPath(hist, w=52, h=22){
+    const min = Math.min(...hist), max = Math.max(...hist);
+    const range = (max-min)||1;
+    return hist.map((v,i)=>{
+      const x = (i/(hist.length-1))*w;
+      const y = h - ((v-min)/range)*h;
+      return (i===0?"M":"L")+x.toFixed(1)+","+y.toFixed(1);
+    }).join(" ");
+  }
+  function renderWatchlist(){
+    document.getElementById("watchlist").innerHTML = stocks.map(s=>{
+      const d = delta(s), cls = d>=0?"up":"down";
+      return `<div class="stock-row ${s.sym===active?'active':''}" data-sym="${s.sym}">
+        <div><div class="sym mono">${s.sym}</div><div class="name">${s.name}</div></div>
+        <svg class="spark" viewBox="0 0 52 22"><path d="${sparkPath(s.hist)}" fill="none" stroke="${d>=0?'var(--up)':'var(--down)'}" stroke-width="1.6"/></svg>
+        <div class="right"><div class="price mono">${fmt(s.price)}</div><div class="delta mono ${cls}">${sign(pct(d>=0?pct(s):pct(s)))}%</div></div>
+      </div>`;
+    }).join("");
+    document.querySelectorAll(".stock-row").forEach(el=>{
+      el.addEventListener("click", ()=>{ active = el.dataset.sym; renderAll(); });
+    });
+  }
+
+  // ---------- Render: center chart ----------
+  function renderCenter(){
+    const s = stocks.find(x=>x.sym===active);
+    const d = delta(s), cls = d>=0?"up":"down";
+    document.getElementById("cSym").textContent = s.sym;
+    document.getElementById("cName").textContent = s.name;
+    document.getElementById("cPrice").textContent = "$"+fmt(s.price);
+    document.getElementById("cDelta").className = "big-delta mono "+cls;
+    document.getElementById("cDelta").textContent = sign(d)+" ("+sign(pct(s))+"%) today";
+
+    drawChart(s.hist, d>=0);
+
+    const high = Math.max(...s.hist).toFixed(2);
+    const low = Math.min(...s.hist).toFixed(2);
+    const statData = [
+      ["Open", "$"+fmt(s.open)],
+      ["Day High", "$"+high],
+      ["Day Low", "$"+low],
+      ["Volume", (s.vol*38.2).toFixed(1)+"M"]
+    ];
+    document.getElementById("statGrid").innerHTML = statData.map(([l,v])=>
+      `<div class="stat"><div class="label">${l}</div><div class="val">${v}</div></div>`).join("");
+  }
+
+  function drawChart(hist, isUp){
+    const svg = document.getElementById("chart");
+    const w = 700, h = 260, pad = 10;
+    const min = Math.min(...hist), max = Math.max(...hist);
+    const rng = (max-min)||1;
+    const pts = hist.map((v,i)=>{
+      const x = (i/(hist.length-1))*w;
+      const y = pad + (h-2*pad) - ((v-min)/rng)*(h-2*pad);
+      return [x,y];
+    });
+    const lineD = pts.map((p,i)=>(i===0?"M":"L")+p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
+    const areaD = lineD + ` L${w},${h} L0,${h} Z`;
+    const color = isUp ? "var(--up)" : "var(--down)";
+    svg.innerHTML = `
+      <defs>
+        <linearGradient id="fadeGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${isUp?'#2fd480':'#f2495c'}" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="${isUp?'#2fd480':'#f2495c'}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${areaD}" fill="url(#fadeGrad)" stroke="none"/>
+      <path d="${lineD}" fill="none" stroke="${color}" stroke-width="2"/>
+      <circle id="hoverDot" r="4" fill="${color}" style="display:none"/>
+    `;
+    svg._pts = pts; svg._hist = hist;
+  }
+
+  svgHover();
+  function svgHover(){
+    const svg = document.getElementById("chart");
+    const info = document.getElementById("crossInfo");
+    svg.addEventListener("mousemove", e=>{
+      if(!svg._pts) return;
+      const rect = svg.getBoundingClientRect();
+      const x = ((e.clientX-rect.left)/rect.width)*700;
+      let idx = Math.round((x/700)*(svg._pts.length-1));
+      idx = Math.max(0, Math.min(svg._pts.length-1, idx));
+      const p = svg._pts[idx], v = svg._hist[idx];
+      const dot = document.getElementById("hoverDot");
+      if(dot){ dot.style.display="block"; dot.setAttribute("cx",p[0]); dot.setAttribute("cy",p[1]); }
+      info.style.opacity = "1";
+      info.textContent = "$"+v.toFixed(2);
+    });
+    svg.addEventListener("mouseleave", ()=>{ info.style.opacity="0"; });
+  }
+
+  // ---------- Render: order book ----------
+  function renderOrderBook(){
+    const s = stocks.find(x=>x.sym===active);
+    let rows = "";
+    for(let i=0;i<6;i++){
+      const bid = (s.price - i*0.08 - Math.random()*0.03).toFixed(2);
+      const ask = (s.price + i*0.08 + Math.random()*0.03).toFixed(2);
+      const qty = Math.floor(100 + Math.random()*900);
+      rows += `<div class="ob-row"><span class="bid">${bid}</span><span class="qty">${qty}</span><span class="ask">${ask}</span></div>`;
+    }
+    document.getElementById("orderBook").innerHTML = rows;
+  }
+
+  // ---------- Render: news ----------
+  function renderNews(){
+    document.getElementById("news").innerHTML = newsItems.map(n=>
+      `<div class="news-item">${n.h}<div class="src">${n.s}</div></div>`).join("");
+  }
+
+  // ---------- Clock ----------
+  function tickClock(){
+    const d = new Date();
+    document.getElementById("clock").textContent = d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) + " · Market Open";
+  }
+
+  function renderAll(){
+    renderIndices(); renderWatchlist(); renderCenter(); renderOrderBook(); renderNews();
+  }
+
+  // ---------- Simulate live ticks ----------
+  function tick(){
+    [...stocks, ...indices].forEach(s=>{
+      const move = (Math.random()-0.5) * (s.price*0.0009*s.vol);
+      s.price = Math.max(0.5, s.price + move);
+      s.hist.push(s.price); if(s.hist.length>60) s.hist.shift();
+    });
+    renderAll();
+  }
+
+  document.getElementById("rangeTabs").addEventListener("click", e=>{
+    if(e.target.tagName!=="BUTTON") return;
+    document.querySelectorAll("#rangeTabs button").forEach(b=>b.classList.remove("on"));
+    e.target.classList.add("on");
+    range = e.target.dataset.r;
+    // Range only affects simulated volatility bucket for demo purposes
+  });
+
+  renderAll();
+  tickClock();
+  setInterval(tick, 1800);
+  setInterval(tickClock, 1000);
+})();
+</script>
+</body>
+</html>
